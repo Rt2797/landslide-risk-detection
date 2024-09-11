@@ -29,21 +29,21 @@
 </head>
 <body>
     <h1>Welcome to the Landslide Risk Detection Website</h1>
-    <p>Real-time landslide risk monitoring in Nepal.</p>
+    <p>Click anywhere on the map to check weather and landslide risk.</p>
 
     <!-- Map container -->
     <div id="map"></div>
 
     <!-- Weather information -->
     <div id="weather">
-        <h2>Weather in Kathmandu</h2>
-        <p id="weather-data">Loading weather data...</p>
+        <h2>Weather Information</h2>
+        <p id="weather-data">Click on the map to load weather data...</p>
     </div>
 
     <!-- Landslide Risk Information -->
     <div id="risk">
         <h2>Landslide Risk Level</h2>
-        <p id="risk-level">Calculating risk...</p>
+        <p id="risk-level">Click on the map to calculate risk...</p>
     </div>
 
     <!-- Leaflet.js library -->
@@ -57,47 +57,58 @@
             maxZoom: 18,
         }).addTo(map);
 
-        // Add a marker on Kathmandu (capital of Nepal)
-        L.marker([27.7172, 85.3240]).addTo(map)
-            .bindPopup('Kathmandu - Future landslide risk monitoring.')
-            .openPopup();
+        // Fetch weather data from OpenWeatherMap API for the clicked location
+        function fetchWeather(lat, lon) {
+            const apiKey = '116c0097ae779c21dec380697159e539';  // Replace with your API key
+            const weatherUrl = `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${apiKey}&units=metric`;
 
-        // Fetch weather data from OpenWeatherMap API
-        const apiKey = '116c0097ae779c21dec380697159e539';  // Replace with your API key
-        const weatherUrl = `https://api.openweathermap.org/data/2.5/weather?lat=27.7172&lon=85.3240&appid=${apiKey}&units=metric`;
+            fetch(weatherUrl)
+                .then(response => response.json())
+                .then(data => {
+                    const weatherDescription = data.weather[0].description;
+                    const temperature = data.main.temp;
+                    const humidity = data.main.humidity;
+                    const rainfall = data.rain ? data.rain['1h'] : 0; // Rain in last hour
 
-        fetch(weatherUrl)
-            .then(response => response.json())
-            .then(data => {
-                const weatherDescription = data.weather[0].description;
-                const temperature = data.main.temp;
-                const humidity = data.main.humidity;
-                const rainfall = data.rain ? data.rain['1h'] : 0; // Rain in last hour
+                    document.getElementById('weather-data').innerHTML = `
+                        Weather: ${weatherDescription}<br>
+                        Temperature: ${temperature} °C<br>
+                        Humidity: ${humidity}%<br>
+                        Rainfall (last 1 hour): ${rainfall} mm
+                    `;
 
-                document.getElementById('weather-data').innerHTML = `
-                    Weather: ${weatherDescription}<br>
-                    Temperature: ${temperature} °C<br>
-                    Humidity: ${humidity}%<br>
-                    Rainfall (last 1 hour): ${rainfall} mm
-                `;
+                    // Calculate landslide risk based on rainfall
+                    let riskLevel;
+                    if (rainfall < 10) {
+                        riskLevel = 'Low Risk';
+                    } else if (rainfall >= 10 && rainfall < 30) {
+                        riskLevel = 'Moderate Risk';
+                    } else {
+                        riskLevel = 'High Risk';
+                    }
 
-                // Calculate landslide risk based on rainfall
-                let riskLevel;
-                if (rainfall < 20) {
-                    riskLevel = 'Low Risk';
-                } else if (rainfall >= 20 && rainfall < 50) {
-                    riskLevel = 'Moderate Risk';
-                } else {
-                    riskLevel = 'High Risk';
-                }
+                    document.getElementById('risk-level').innerHTML = riskLevel;
+                })
+                .catch(error => {
+                    console.error('Error fetching weather data:', error);
+                    document.getElementById('weather-data').innerHTML = 'Unable to load weather data';
+                    document.getElementById('risk-level').innerHTML = 'Unable to calculate risk';
+                });
+        }
 
-                document.getElementById('risk-level').innerHTML = riskLevel;
-            })
-            .catch(error => {
-                console.error('Error fetching weather data:', error);
-                document.getElementById('weather-data').innerHTML = 'Unable to load weather data';
-                document.getElementById('risk-level').innerHTML = 'Unable to calculate risk';
-            });
+        // Listen for click events on the map
+        map.on('click', function(e) {
+            const lat = e.latlng.lat;
+            const lon = e.latlng.lng;
+
+            // Update weather and risk data for the clicked location
+            fetchWeather(lat, lon);
+
+            // Add a marker at the clicked location
+            L.marker([lat, lon]).addTo(map)
+                .bindPopup(`Latitude: ${lat}, Longitude: ${lon}`)
+                .openPopup();
+        });
     </script>
 </body>
 </html>
