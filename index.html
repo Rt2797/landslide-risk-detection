@@ -90,24 +90,33 @@
         // Variables for markers
         var currentMarker = null;
 
-        // Function to fetch weather data
-        function fetchWeatherData(lat, lon, timestamp) {
+        // Function to fetch hourly weather data
+        function fetchHourlyWeatherData(lat, lon, startTime, endTime) {
             const apiKey = '116c0097ae779c21dec380697159e539';  // Replace with your OpenWeatherMap API key
-            const weatherUrl = `https://api.openweathermap.org/data/2.5/onecall/timemachine?lat=${lat}&lon=${lon}&dt=${timestamp}&appid=${apiKey}&units=metric`;
+            let currentTime = startTime;
+            let totalRainfall = 0;
+            const fetchPromises = [];
 
-            return fetch(weatherUrl)
-                .then(response => response.json())
-                .then(data => {
-                    const rainfall = data.rain ? data.rain['1h'] : 0;
-                    const temp = data.current.temp;
-                    const humidity = data.current.humidity;
-                    const windSpeed = data.current.wind_speed;
-                    return { rainfall, temp, humidity, windSpeed };
-                })
-                .catch(error => {
-                    console.error('Error fetching weather data:', error);
-                    return { rainfall: 'Unavailable', temp: 'Unavailable', humidity: 'Unavailable', windSpeed: 'Unavailable' };
-                });
+            while (currentTime <= endTime) {
+                const weatherUrl = `https://api.openweathermap.org/data/2.5/onecall/timemachine?lat=${lat}&lon=${lon}&dt=${currentTime}&appid=${apiKey}&units=metric`;
+                fetchPromises.push(
+                    fetch(weatherUrl)
+                        .then(response => response.json())
+                        .then(data => {
+                            if (data.rain) {
+                                totalRainfall += data.rain['1h'] || 0;
+                            }
+                        })
+                        .catch(error => {
+                            console.error('Error fetching weather data:', error);
+                        })
+                );
+
+                // Move to the next hour
+                currentTime += 3600; // 3600 seconds = 1 hour
+            }
+
+            return Promise.all(fetchPromises).then(() => totalRainfall);
         }
 
         // Function to fetch elevation data
@@ -144,18 +153,27 @@
             const currentTime = Math.floor(Date.now() / 1000); // Current time in seconds
             const secondsInHour = 3600;
             return {
-                '72 hours ago': currentTime - 72 * secondsInHour,
-                '48 hours ago': currentTime - 48 * secondsInHour,
-                '24 hours ago': currentTime - 24 * secondsInHour,
+                '72 hours ago': {
+                    start: currentTime - 72 * secondsInHour,
+                    end: currentTime
+                },
+                '48 hours ago': {
+                    start: currentTime - 48 * secondsInHour,
+                    end: currentTime
+                },
+                '24 hours ago': {
+                    start: currentTime - 24 * secondsInHour,
+                    end: currentTime
+                }
             };
         }
 
         // Function to fetch and display detailed weather, slope, and landslide risk data
         function fetchDetails(lat, lon) {
             const timestamps = getTimestamps();
-            const weatherPromises = Object.entries(timestamps).map(([label, timestamp]) =>
-                fetchWeatherData(lat, lon, timestamp)
-                    .then(data => ({ label, ...data }))
+            const weatherPromises = Object.entries(timestamps).map(([label, { start, end }]) =>
+                fetchHourlyWeatherData(lat, lon, start, end)
+                    .then(totalRainfall => ({ label, totalRainfall }))
             );
 
             // Fetch slope data
@@ -165,10 +183,7 @@
                 // Weather data
                 const weatherData = results.slice(0, -1).map(data => `
                     <strong>${data.label}</strong><br>
-                    Temperature: ${data.temp}°C<br>
-                    Humidity: ${data.humidity}%<br>
-                    Wind Speed: ${data.windSpeed} m/s<br>
-                    Rainfall: ${data.rainfall} mm<br><br>
+                    Cumulative Rainfall: ${data.totalRainfall.toFixed(2)} mm<br><br>
                 `).join('');
                 document.getElementById('weather-data').innerHTML = weatherData;
 
@@ -180,7 +195,7 @@
                 `;
 
                 // Landslide risk calculation (based on rainfall and slope)
-                const rainfall24 = results.find(data => data.label === '24 hours ago').rainfall;
+                const rainfall24 = results.find(data => data.label === '24 hours ago').totalRainfall;
                 let riskLevel;
                 if (rainfall24 < 10 && slope < 15) {
                     riskLevel = 'Low Risk';
