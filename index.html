@@ -29,7 +29,7 @@
 </head>
 <body>
     <h1>Welcome to the Landslide Risk Detection Website</h1>
-    <p>Click anywhere on the map to check weather and landslide risk.</p>
+    <p>Click anywhere on the map of Nepal to check weather and landslide risk.</p>
 
     <!-- Map container -->
     <div id="map"></div>
@@ -49,8 +49,20 @@
     <!-- Leaflet.js library -->
     <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
     <script>
-        // Initialize the map and set its view to Nepal
-        var map = L.map('map').setView([28.3949, 84.1240], 7);  // Zoom level 7
+        // Define the geographic bounds for Nepal
+        var nepalBounds = [
+            [26.347, 80.058],  // Southwest corner of Nepal
+            [30.422, 88.201]   // Northeast corner of Nepal
+        ];
+
+        // Initialize the map, centered on Nepal, with fixed zoom and boundaries
+        var map = L.map('map', {
+            maxBounds: nepalBounds,  // Restrict the map to Nepal's boundaries
+            maxBoundsViscosity: 1.0, // Prevents the user from dragging the map outside the bounds
+            minZoom: 6,              // Minimum zoom level
+            maxZoom: 12,             // Maximum zoom level
+            zoomControl: true        // Allows zoom buttons
+        }).setView([28.3949, 84.1240], 7);  // Centered on Nepal with an initial zoom level
 
         // Load and display tile layers (OpenStreetMap)
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -109,6 +121,9 @@
                 .bindPopup(`Latitude: ${lat}, Longitude: ${lon}`)
                 .openPopup();
         });
+
+        // Limit the map's view to Nepal's borders
+        map.setMaxBounds(nepalBounds);
     </script>
 </body>
 </html>
