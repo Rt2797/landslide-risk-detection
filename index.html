@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Landslide Risk Detection</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" />
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -16,11 +17,35 @@
         p {
             font-size: 1.2em;
         }
+        #map {
+            height: 400px;
+            width: 100%;
+            margin-top: 20px;
+        }
     </style>
 </head>
 <body>
     <h1>Welcome to the Landslide Risk Detection Website</h1>
     <p>Real-time landslide risk monitoring will be available here soon.</p>
+
+    <!-- Map container -->
+    <div id="map"></div>
+
+    <!-- Leaflet.js library -->
+    <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
+    <script>
+        // Initialize the map and set its view to a starting position
+        var map = L.map('map').setView([51.505, -0.09], 13);
+
+        // Load and display tile layers (OpenStreetMap)
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 18,
+        }).addTo(map);
+
+        // Add a marker on the map
+        L.marker([51.505, -0.09]).addTo(map)
+            .bindPopup('Sample marker.<br> Future landslide risk here!')
+            .openPopup();
+    </script>
 </body>
 </html>
-
