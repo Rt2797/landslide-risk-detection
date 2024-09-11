@@ -103,6 +103,7 @@
                     fetch(weatherUrl)
                         .then(response => response.json())
                         .then(data => {
+                            console.log(`Data for ${new Date(currentTime * 1000).toLocaleString()}:`, data);  // Debugging
                             if (data.rain) {
                                 totalRainfall += data.rain['1h'] || 0;
                             }
@@ -155,15 +156,15 @@
             return {
                 '72 hours ago': {
                     start: currentTime - 72 * secondsInHour,
-                    end: currentTime
+                    end: currentTime - 1 * secondsInHour // Exclude current hour
                 },
                 '48 hours ago': {
                     start: currentTime - 48 * secondsInHour,
-                    end: currentTime
+                    end: currentTime - 1 * secondsInHour // Exclude current hour
                 },
                 '24 hours ago': {
                     start: currentTime - 24 * secondsInHour,
-                    end: currentTime
+                    end: currentTime - 1 * secondsInHour // Exclude current hour
                 }
             };
         }
@@ -197,9 +198,9 @@
                 // Landslide risk calculation (based on rainfall and slope)
                 const rainfall24 = results.find(data => data.label === '24 hours ago').totalRainfall;
                 let riskLevel;
-                if (rainfall24 < 10 && slope < 15) {
+                if (rainfall24 === 0 && slope < 15) {
                     riskLevel = 'Low Risk';
-                } else if ((rainfall24 >= 10 && rainfall24 < 30) || (slope >= 15 && slope < 30)) {
+                } else if ((rainfall24 > 0 && rainfall24 < 30) || (slope >= 15 && slope < 30)) {
                     riskLevel = 'Moderate Risk';
                 } else {
                     riskLevel = 'High Risk';
