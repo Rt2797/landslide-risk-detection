@@ -22,14 +22,14 @@
             width: 100%;
             margin-top: 20px;
         }
-        #weather {
+        #weather, #risk {
             margin-top: 20px;
         }
     </style>
 </head>
 <body>
     <h1>Welcome to the Landslide Risk Detection Website</h1>
-    <p>Real-time landslide risk monitoring in Nepal will be available here soon.</p>
+    <p>Real-time landslide risk monitoring in Nepal.</p>
 
     <!-- Map container -->
     <div id="map"></div>
@@ -38,6 +38,12 @@
     <div id="weather">
         <h2>Weather in Kathmandu</h2>
         <p id="weather-data">Loading weather data...</p>
+    </div>
+
+    <!-- Landslide Risk Information -->
+    <div id="risk">
+        <h2>Landslide Risk Level</h2>
+        <p id="risk-level">Calculating risk...</p>
     </div>
 
     <!-- Leaflet.js library -->
@@ -57,7 +63,7 @@
             .openPopup();
 
         // Fetch weather data from OpenWeatherMap API
-        const apiKey = '116c0097ae779c21dec380697159e539';  // Replace with your API key
+        const apiKey = 'YOUR_API_KEY';  // Replace with your API key
         const weatherUrl = `https://api.openweathermap.org/data/2.5/weather?lat=27.7172&lon=85.3240&appid=${apiKey}&units=metric`;
 
         fetch(weatherUrl)
@@ -66,15 +72,31 @@
                 const weatherDescription = data.weather[0].description;
                 const temperature = data.main.temp;
                 const humidity = data.main.humidity;
+                const rainfall = data.rain ? data.rain['1h'] : 0; // Rain in last hour
+
                 document.getElementById('weather-data').innerHTML = `
                     Weather: ${weatherDescription}<br>
                     Temperature: ${temperature} °C<br>
                     Humidity: ${humidity}%<br>
+                    Rainfall (last 1 hour): ${rainfall} mm
                 `;
+
+                // Calculate landslide risk based on rainfall
+                let riskLevel;
+                if (rainfall < 20) {
+                    riskLevel = 'Low Risk';
+                } else if (rainfall >= 20 && rainfall < 50) {
+                    riskLevel = 'Moderate Risk';
+                } else {
+                    riskLevel = 'High Risk';
+                }
+
+                document.getElementById('risk-level').innerHTML = riskLevel;
             })
             .catch(error => {
                 console.error('Error fetching weather data:', error);
                 document.getElementById('weather-data').innerHTML = 'Unable to load weather data';
+                document.getElementById('risk-level').innerHTML = 'Unable to calculate risk';
             });
     </script>
 </body>
