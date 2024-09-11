@@ -9,50 +9,69 @@
         body {
             font-family: Arial, sans-serif;
             text-align: center;
-            margin: 50px;
+            margin: 20px;
         }
         h1 {
             color: #2e6da4;
-        }
-        p {
-            font-size: 1.2em;
         }
         #map {
             height: 400px;
             width: 100%;
             margin-top: 20px;
+            border: 2px solid #2e6da4;
+            border-radius: 8px;
         }
-        #weather, #risk {
+        #info-container {
+            display: flex;
+            justify-content: space-around;
             margin-top: 20px;
+        }
+        .info-section {
+            border: 1px solid #ddd;
+            border-radius: 10px;
+            padding: 15px;
+            width: 30%;
+            background-color: #f9f9f9;
+            box-shadow: 2px 2px 12px rgba(0, 0, 0, 0.1);
+        }
+        h2 {
+            color: #2e6da4;
+            font-size: 1.4em;
+            margin-bottom: 10px;
+        }
+        .data-point {
+            font-size: 1.2em;
+            margin-bottom: 5px;
         }
     </style>
 </head>
 <body>
-    <h1>Welcome to the Landslide Risk Detection Website</h1>
-    <p>Click anywhere on the map of Nepal to check weather and landslide risk.</p>
+    <h1>Landslide Risk Detection in Nepal</h1>
+    <p>Select a point on the map to get detailed weather, slope, and risk information.</p>
 
-    <!-- Map container -->
     <div id="map"></div>
 
-    <!-- Weather information -->
-    <div id="weather">
-        <h2>Weather Information</h2>
-        <p id="weather-data">Click on the map to load weather data...</p>
+    <div id="info-container">
+        <div class="info-section">
+            <h2>Weather Information</h2>
+            <p id="weather-data">Click on the map to load weather data...</p>
+        </div>
+        <div class="info-section">
+            <h2>Elevation & Slope</h2>
+            <p id="elevation-data">Click on the map to load elevation and slope...</p>
+        </div>
+        <div class="info-section">
+            <h2>Landslide Risk</h2>
+            <p id="risk-level">Click on the map to calculate risk...</p>
+        </div>
     </div>
 
-    <!-- Landslide Risk Information -->
-    <div id="risk">
-        <h2>Landslide Risk Level</h2>
-        <p id="risk-level">Click on the map to calculate risk...</p>
-    </div>
-
-    <!-- Leaflet.js library -->
     <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
     <script>
-        // Define the geographic bounds for Nepal
+        // Define Nepal geographic bounds
         var nepalBounds = [
-            [26.347, 80.058],  // Southwest corner of Nepal
-            [30.422, 88.201]   // Northeast corner of Nepal
+            [26.347, 80.058],
+            [30.422, 88.201]
         ];
 
         // Initialize the map, centered on Nepal
@@ -60,37 +79,70 @@
             maxBounds: nepalBounds,
             maxBoundsViscosity: 1.0,
             minZoom: 6,
-            maxZoom: 12,
-            zoomControl: true
+            maxZoom: 12
         }).setView([28.3949, 84.1240], 7);
 
-        // Load and display tile layers (OpenStreetMap)
+        // Tile layer
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            maxZoom: 18,
+            maxZoom: 18
         }).addTo(map);
 
-        // Fetch weather data for a specific timestamp (historical)
+        // Variables for markers
+        var currentMarker = null;
+
+        // Fetch weather data
         function fetchWeatherData(lat, lon, timestamp, label) {
-            const apiKey = '116c0097ae779c21dec380697159e539';  // Replace with your API key
+            const apiKey = '116c0097ae779c21dec380697159e539'; // Replace with your OpenWeatherMap API key
             const weatherUrl = `https://api.openweathermap.org/data/2.5/onecall/timemachine?lat=${lat}&lon=${lon}&dt=${timestamp}&appid=${apiKey}&units=metric`;
 
             return fetch(weatherUrl)
                 .then(response => response.json())
                 .then(data => {
                     const rainfall = data.rain ? data.rain['1h'] : 0;
-                    return { label: label, rainfall: rainfall };
+                    const temp = data.current.temp;
+                    const humidity = data.current.humidity;
+                    const windSpeed = data.current.wind_speed;
+                    return { label, rainfall, temp, humidity, windSpeed };
                 })
                 .catch(error => {
                     console.error('Error fetching weather data:', error);
-                    return { label: label, rainfall: 'Unavailable' };
+                    return { label, rainfall: 'Unavailable', temp: 'Unavailable', humidity: 'Unavailable', windSpeed: 'Unavailable' };
                 });
         }
 
-        // Calculate the UNIX timestamps for 72, 48, and 24 hours ago
-        function getTimestamps() {
-            const currentTime = Math.floor(Date.now() / 1000);  // Current time in seconds
-            const secondsInHour = 3600;
+        // Fetch elevation data
+        function fetchElevation(lat, lon) {
+            const elevationUrl = `https://api.open-elevation.com/api/v1/lookup?locations=${lat},${lon}`;
+            return fetch(elevationUrl)
+                .then(response => response.json())
+                .then(data => data.results[0].elevation)
+                .catch(error => {
+                    console.error('Error fetching elevation data:', error);
+                    return 'Unavailable';
+                });
+        }
 
+        // Fetch slope data by comparing elevation at nearby points
+        function fetchSlope(lat, lon) {
+            const delta = 0.01; // Small change in latitude and longitude for slope calculation
+            const nearbyLat = lat + delta;
+            const nearbyLon = lon + delta;
+
+            return Promise.all([
+                fetchElevation(lat, lon),
+                fetchElevation(nearbyLat, nearbyLon)
+            ]).then(([elevation1, elevation2]) => {
+                const rise = Math.abs(elevation2 - elevation1); // Change in elevation (rise)
+                const run = Math.sqrt(Math.pow(delta * 111.32, 2)); // Approx distance between points (run), 1 degree ~111.32 km
+                const slope = (rise / run) * 100; // Slope as a percentage
+                return { elevation: elevation1, slope: slope.toFixed(2) };
+            });
+        }
+
+        // Calculate UNIX timestamps for past weather (72, 48, 24 hours)
+        function getTimestamps() {
+            const currentTime = Math.floor(Date.now() / 1000); // Current time in seconds
+            const secondsInHour = 3600;
             return {
                 '72 hours ago': currentTime - 72 * secondsInHour,
                 '48 hours ago': currentTime - 48 * secondsInHour,
@@ -98,51 +150,43 @@
             };
         }
 
-        // Fetch rainfall data for 72, 48, and 24 hours ago
-        function fetchWeather(lat, lon) {
+        // Fetch and display detailed weather, slope, and landslide risk data
+        function fetchDetails(lat, lon) {
             const timestamps = getTimestamps();
-
             const weatherPromises = Object.entries(timestamps).map(([label, timestamp]) =>
                 fetchWeatherData(lat, lon, timestamp, label)
             );
 
-            Promise.all(weatherPromises).then(weatherData => {
-                const weatherHTML = weatherData.map(data => `
-                    ${data.label}: ${data.rainfall} mm
-                `).join('<br>');
+            // Fetch weather, elevation, and slope data concurrently
+            const slopePromise = fetchSlope(lat, lon);
 
-                document.getElementById('weather-data').innerHTML = weatherHTML;
+            Promise.all([...weatherPromises, slopePromise]).then(results => {
+                // Weather data
+                const weatherData = results.slice(0, -1).map(data => `
+                    <strong>${data.label}</strong><br>
+                    Temperature: ${data.temp}°C<br>
+                    Humidity: ${data.humidity}%<br>
+                    Wind Speed: ${data.windSpeed} m/s<br>
+                    Rainfall: ${data.rainfall} mm<br><br>
+                `).join('');
+                document.getElementById('weather-data').innerHTML = weatherData;
 
-                // Calculate landslide risk based on rainfall in the last 24 hours
-                const rainfall24 = weatherData.find(data => data.label === '24 hours ago').rainfall;
+                // Elevation and slope data
+                const { elevation, slope } = results[results.length - 1];
+                document.getElementById('elevation-data').innerHTML = `
+                    Elevation: ${elevation} meters<br>
+                    Slope: ${slope}%
+                `;
 
+                // Landslide risk calculation (based on rainfall and slope)
+                const rainfall24 = results.find(data => data.label === '24 hours ago').rainfall;
                 let riskLevel;
-                if (rainfall24 < 10) {
+                if (rainfall24 < 10 && slope < 15) {
                     riskLevel = 'Low Risk';
-                } else if (rainfall24 >= 10 && rainfall24 < 30) {
+                } else if ((rainfall24 >= 10 && rainfall24 < 30) || (slope >= 15 && slope < 30)) {
                     riskLevel = 'Moderate Risk';
                 } else {
                     riskLevel = 'High Risk';
                 }
-
-                document.getElementById('risk-level').innerHTML = riskLevel;
+                document.getElementById('risk-level').innerHTML = `Landslide Risk: ${riskLevel}`;
             });
-        }
-
-        // Listen for click events on the map
-        map.on('click', function(e) {
-            const lat = e.latlng.lat;
-            const lon = e.latlng.lng;
-
-            // Fetch weather and risk data for the clicked location
-            fetchWeather(lat, lon);
-
-            // Add a marker at the clicked location
-            L.marker([lat, lon]).addTo(map)
-                .bindPopup(`Latitude: ${lat}, Longitude: ${lon}`)
-                .openPopup();
-        });
-
-    </script>
-</body>
-</html>
