@@ -22,6 +22,9 @@
             width: 100%;
             margin-top: 20px;
         }
+        #weather {
+            margin-top: 20px;
+        }
     </style>
 </head>
 <body>
@@ -30,6 +33,12 @@
 
     <!-- Map container -->
     <div id="map"></div>
+
+    <!-- Weather information -->
+    <div id="weather">
+        <h2>Weather in Kathmandu</h2>
+        <p id="weather-data">Loading weather data...</p>
+    </div>
 
     <!-- Leaflet.js library -->
     <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
@@ -46,6 +55,28 @@
         L.marker([27.7172, 85.3240]).addTo(map)
             .bindPopup('Kathmandu - Future landslide risk monitoring.')
             .openPopup();
+
+        // Fetch weather data from OpenWeatherMap API
+        const apiKey = 'YOUR_API_KEY';  // Replace with your API key
+        const weatherUrl = `https://api.openweathermap.org/data/2.5/weather?lat=27.7172&lon=85.3240&appid=${116c0097ae779c21dec380697159e539
+}&units=metric`;
+
+        fetch(weatherUrl)
+            .then(response => response.json())
+            .then(data => {
+                const weatherDescription = data.weather[0].description;
+                const temperature = data.main.temp;
+                const humidity = data.main.humidity;
+                document.getElementById('weather-data').innerHTML = `
+                    Weather: ${weatherDescription}<br>
+                    Temperature: ${temperature} °C<br>
+                    Humidity: ${humidity}%<br>
+                `;
+            })
+            .catch(error => {
+                console.error('Error fetching weather data:', error);
+                document.getElementById('weather-data').innerHTML = 'Unable to load weather data';
+            });
     </script>
 </body>
 </html>
