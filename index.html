@@ -55,57 +55,78 @@
             [30.422, 88.201]   // Northeast corner of Nepal
         ];
 
-        // Initialize the map, centered on Nepal, with fixed zoom and boundaries
+        // Initialize the map, centered on Nepal
         var map = L.map('map', {
-            maxBounds: nepalBounds,  // Restrict the map to Nepal's boundaries
-            maxBoundsViscosity: 1.0, // Prevents the user from dragging the map outside the bounds
-            minZoom: 6,              // Minimum zoom level
-            maxZoom: 12,             // Maximum zoom level
-            zoomControl: true        // Allows zoom buttons
-        }).setView([28.3949, 84.1240], 7);  // Centered on Nepal with an initial zoom level
+            maxBounds: nepalBounds,
+            maxBoundsViscosity: 1.0,
+            minZoom: 6,
+            maxZoom: 12,
+            zoomControl: true
+        }).setView([28.3949, 84.1240], 7);
 
         // Load and display tile layers (OpenStreetMap)
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             maxZoom: 18,
         }).addTo(map);
 
-        // Fetch weather data from OpenWeatherMap API for the clicked location
-        function fetchWeather(lat, lon) {
+        // Fetch weather data for a specific timestamp (historical)
+        function fetchWeatherData(lat, lon, timestamp, label) {
             const apiKey = '116c0097ae779c21dec380697159e539';  // Replace with your API key
-            const weatherUrl = `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${apiKey}&units=metric`;
+            const weatherUrl = `https://api.openweathermap.org/data/2.5/onecall/timemachine?lat=${lat}&lon=${lon}&dt=${timestamp}&appid=${apiKey}&units=metric`;
 
-            fetch(weatherUrl)
+            return fetch(weatherUrl)
                 .then(response => response.json())
                 .then(data => {
-                    const weatherDescription = data.weather[0].description;
-                    const temperature = data.main.temp;
-                    const humidity = data.main.humidity;
-                    const rainfall = data.rain ? data.rain['1h'] : 0; // Rain in last hour
-
-                    document.getElementById('weather-data').innerHTML = `
-                        Weather: ${weatherDescription}<br>
-                        Temperature: ${temperature} °C<br>
-                        Humidity: ${humidity}%<br>
-                        Rainfall (last 1 hour): ${rainfall} mm
-                    `;
-
-                    // Calculate landslide risk based on rainfall
-                    let riskLevel;
-                    if (rainfall < 10) {
-                        riskLevel = 'Low Risk';
-                    } else if (rainfall >= 10 && rainfall < 30) {
-                        riskLevel = 'Moderate Risk';
-                    } else {
-                        riskLevel = 'High Risk';
-                    }
-
-                    document.getElementById('risk-level').innerHTML = riskLevel;
+                    const rainfall = data.rain ? data.rain['1h'] : 0;
+                    return { label: label, rainfall: rainfall };
                 })
                 .catch(error => {
                     console.error('Error fetching weather data:', error);
-                    document.getElementById('weather-data').innerHTML = 'Unable to load weather data';
-                    document.getElementById('risk-level').innerHTML = 'Unable to calculate risk';
+                    return { label: label, rainfall: 'Unavailable' };
                 });
+        }
+
+        // Calculate the UNIX timestamps for 72, 48, and 24 hours ago
+        function getTimestamps() {
+            const currentTime = Math.floor(Date.now() / 1000);  // Current time in seconds
+            const secondsInHour = 3600;
+
+            return {
+                '72 hours ago': currentTime - 72 * secondsInHour,
+                '48 hours ago': currentTime - 48 * secondsInHour,
+                '24 hours ago': currentTime - 24 * secondsInHour,
+            };
+        }
+
+        // Fetch rainfall data for 72, 48, and 24 hours ago
+        function fetchWeather(lat, lon) {
+            const timestamps = getTimestamps();
+
+            const weatherPromises = Object.entries(timestamps).map(([label, timestamp]) =>
+                fetchWeatherData(lat, lon, timestamp, label)
+            );
+
+            Promise.all(weatherPromises).then(weatherData => {
+                const weatherHTML = weatherData.map(data => `
+                    ${data.label}: ${data.rainfall} mm
+                `).join('<br>');
+
+                document.getElementById('weather-data').innerHTML = weatherHTML;
+
+                // Calculate landslide risk based on rainfall in the last 24 hours
+                const rainfall24 = weatherData.find(data => data.label === '24 hours ago').rainfall;
+
+                let riskLevel;
+                if (rainfall24 < 10) {
+                    riskLevel = 'Low Risk';
+                } else if (rainfall24 >= 10 && rainfall24 < 30) {
+                    riskLevel = 'Moderate Risk';
+                } else {
+                    riskLevel = 'High Risk';
+                }
+
+                document.getElementById('risk-level').innerHTML = riskLevel;
+            });
         }
 
         // Listen for click events on the map
@@ -113,7 +134,7 @@
             const lat = e.latlng.lat;
             const lon = e.latlng.lng;
 
-            // Update weather and risk data for the clicked location
+            // Fetch weather and risk data for the clicked location
             fetchWeather(lat, lon);
 
             // Add a marker at the clicked location
@@ -122,8 +143,6 @@
                 .openPopup();
         });
 
-        // Limit the map's view to Nepal's borders
-        map.setMaxBounds(nepalBounds);
     </script>
 </body>
 </html>
