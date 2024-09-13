@@ -1,122 +1,67 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Highway Landslide Risk Detection</title>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" />
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            text-align: center;
-            margin: 20px;
-        }
-        h1 {
-            color: #2e6da4;
-        }
-        #map {
-            height: 500px;
-            width: 100%;
-            margin-top: 20px;
-            border: 2px solid #2e6da4;
-            border-radius: 8px;
-        }
-        #info-container {
-            display: flex;
-            justify-content: space-around;
-            margin-top: 20px;
-        }
-        .info-section {
-            border: 1px solid #ddd;
-            border-radius: 10px;
-            padding: 15px;
-            width: 30%;
-            background-color: #f9f9f9;
-            box-shadow: 2px 2px 12px rgba(0, 0, 0, 0.1);
-        }
-        h2 {
-            color: #2e6da4;
-            font-size: 1.4em;
-            margin-bottom: 10px;
-        }
-        .data-point {
-            font-size: 1.2em;
-            margin-bottom: 5px;
-        }
-    </style>
-</head>
-<body>
-    <h1>Highway Landslide Risk Detection</h1>
-    <p>Select a point on the highway to get weather, slope, and risk information.</p>
+// Function to fetch and display detailed weather, slope, and landslide risk data
+function fetchDetails(lat, lon) {
+    const timestamps = getTimestamps();
+    const weatherPromises = Object.entries(timestamps).map(([label, { start, end }]) =>
+        fetchHourlyWeatherData(lat, lon, start, end)
+            .then(totalRainfall => ({ label, totalRainfall }))
+    );
 
-    <div id="map"></div>
+    // Fetch slope data
+    const slopePromise = fetchSlope(lat, lon);
 
-    <div id="info-container">
-        <div class="info-section">
-            <h2>Weather Information</h2>
-            <p id="weather-data">Click on a highway point to load weather data...</p>
-        </div>
-        <div class="info-section">
-            <h2>Elevation & Slope</h2>
-            <p id="elevation-data">Click on a highway point to load elevation and slope...</p>
-        </div>
-        <div class="info-section">
-            <h2>Landslide Risk</h2>
-            <p id="risk-level">Click on a highway point to calculate risk...</p>
-        </div>
-    </div>
+    Promise.all([...weatherPromises, slopePromise]).then(results => {
+        // Weather data
+        const weatherData = results.slice(0, -1).map(data => `
+            <strong>${data.label}</strong><br>
+            Cumulative Rainfall: ${data.totalRainfall.toFixed(2)} mm<br><br>
+        `).join('');
+        document.getElementById('weather-data').innerHTML = weatherData;
 
-    <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet-osm/1.0.0/leaflet-osm.min.js"></script>
+        // Elevation and slope data
+        const { elevation, slope } = results[results.length - 1];
+        document.getElementById('elevation-data').innerHTML = `
+            Elevation: ${elevation} meters<br>
+            Slope: ${slope}%
+        `;
 
-    <script>
-        // Center map on Nepal
-        var map = L.map('map').setView([28.5, 84.0], 8);
+        // Calculate total rainfall for 72 hours, 48 hours, and 24 hours
+        const rainfall24 = results.find(data => data.label === '24 hours ago').totalRainfall;
+        const rainfall48 = results.find(data => data.label === '48 hours ago').totalRainfall;
+        const rainfall72 = results.find(data => data.label === '72 hours ago').totalRainfall;
 
-        // Tile layer
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            maxZoom: 18
-        }).addTo(map);
+        // Define Risk Levels Based on Rainfall and Slope
+        let riskLevel;
 
-        // Function to fetch OSM highway data
-        function loadHighways() {
-            const highwayLayer = L.osmLayer({
-                url: "https://overpass-api.de/api/interpreter?data=[out:json];way[highway](28.0,80.0,30.0,88.0);out;",
-                style: {
-                    color: '#FF0000',  // Highway line color
-                    weight: 2
-                }
-            });
-
-            highwayLayer.addTo(map);
+        if (rainfall24 === 0 && rainfall48 === 0 && rainfall72 === 0) {
+            // No rainfall, low risk regardless of slope
+            riskLevel = 'Low Risk';
+        } else if (rainfall24 > 0 && rainfall24 < 30) {
+            // Moderate rainfall
+            if (slope >= 30) {
+                riskLevel = 'Moderate Risk';  // High slope + moderate rainfall = moderate risk
+            } else if (slope >= 15 && slope < 30) {
+                riskLevel = 'Moderate Risk';  // Moderate slope + moderate rainfall = moderate risk
+            } else {
+                riskLevel = 'Low Risk';  // Low slope + moderate rainfall = low risk
+            }
+        } else if (rainfall24 >= 30) {
+            // Significant rainfall in 24 hours
+            if (slope >= 30) {
+                riskLevel = 'High Risk';  // High slope + high rainfall = high risk
+            } else if (slope >= 15 && slope < 30) {
+                riskLevel = 'Moderate Risk';  // Moderate slope + high rainfall = moderate risk
+            } else {
+                riskLevel = 'Moderate Risk';  // Low slope + high rainfall = moderate risk
+            }
+        } else {
+            // Edge case: very high slope and significant rainfall over 48/72 hours
+            if (rainfall72 >= 50 || rainfall48 >= 50) {
+                riskLevel = 'High Risk';  // Large amount of rainfall + slope = high risk
+            } else {
+                riskLevel = 'Moderate Risk';
+            }
         }
 
-        // Function to fetch weather, slope, and risk data
-        function fetchDetails(lat, lon, name) {
-            document.getElementById('weather-data').innerHTML = `Loading data for ${name}...`;
-
-            setTimeout(() => {
-                const randomRainfall = (Math.random() * 100).toFixed(2);
-                const randomSlope = (Math.random() * 50).toFixed(2);
-                const riskLevel = randomRainfall > 50 || randomSlope > 30 ? 'High Risk' : 'Low Risk';
-
-                document.getElementById('weather-data').innerHTML = `
-                    Location: ${name}<br>
-                    Rainfall (last 24 hours): ${randomRainfall} mm
-                `;
-                document.getElementById('elevation-data').innerHTML = `Slope: ${randomSlope}%`;
-                document.getElementById('risk-level').innerHTML = `Landslide Risk: ${riskLevel}`;
-            }, 1000);
-        }
-
-        // Load OSM highways
-        loadHighways();
-
-        // Sample marker (you can add more predefined markers for specific locations on the highway)
-        const sampleMarker = L.marker([28.2, 84.0]).addTo(map);
-        sampleMarker.bindPopup("Sample Point").on('click', function() {
-            fetchDetails(28.2, 84.0, "Sample Point");
-        });
-    </script>
-</body>
-</html>
+        document.getElementById('risk-level').innerHTML = `Landslide Risk: ${riskLevel}`;
+    });
+}
