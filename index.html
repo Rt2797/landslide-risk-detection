@@ -1,67 +1,229 @@
-// Function to fetch and display detailed weather, slope, and landslide risk data
-function fetchDetails(lat, lon) {
-    const timestamps = getTimestamps();
-    const weatherPromises = Object.entries(timestamps).map(([label, { start, end }]) =>
-        fetchHourlyWeatherData(lat, lon, start, end)
-            .then(totalRainfall => ({ label, totalRainfall }))
-    );
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Landslide Risk Detection - Nepal</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" />
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            margin: 20px;
+        }
+        h1 {
+            color: #2e6da4;
+        }
+        #map {
+            height: 400px;
+            width: 100%;
+            margin-top: 20px;
+            border: 2px solid #2e6da4;
+            border-radius: 8px;
+        }
+        #info-container {
+            display: flex;
+            justify-content: space-around;
+            margin-top: 20px;
+        }
+        .info-section {
+            border: 1px solid #ddd;
+            border-radius: 10px;
+            padding: 15px;
+            width: 30%;
+            background-color: #f9f9f9;
+            box-shadow: 2px 2px 12px rgba(0, 0, 0, 0.1);
+        }
+        h2 {
+            color: #2e6da4;
+            font-size: 1.4em;
+            margin-bottom: 10px;
+        }
+        .data-point {
+            font-size: 1.2em;
+            margin-bottom: 5px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Landslide Risk Detection in Nepal</h1>
+    <p>Select a point on the map to get detailed weather, slope, and risk information.</p>
 
-    // Fetch slope data
-    const slopePromise = fetchSlope(lat, lon);
+    <div id="map"></div>
 
-    Promise.all([...weatherPromises, slopePromise]).then(results => {
-        // Weather data
-        const weatherData = results.slice(0, -1).map(data => `
-            <strong>${data.label}</strong><br>
-            Cumulative Rainfall: ${data.totalRainfall.toFixed(2)} mm<br><br>
-        `).join('');
-        document.getElementById('weather-data').innerHTML = weatherData;
+    <div id="info-container">
+        <div class="info-section">
+            <h2>Weather Information</h2>
+            <p id="weather-data">Click on the map to load weather data...</p>
+        </div>
+        <div class="info-section">
+            <h2>Elevation & Slope</h2>
+            <p id="elevation-data">Click on the map to load elevation and slope...</p>
+        </div>
+        <div class="info-section">
+            <h2>Landslide Risk</h2>
+            <p id="risk-level">Click on the map to calculate risk...</p>
+        </div>
+    </div>
 
-        // Elevation and slope data
-        const { elevation, slope } = results[results.length - 1];
-        document.getElementById('elevation-data').innerHTML = `
-            Elevation: ${elevation} meters<br>
-            Slope: ${slope}%
-        `;
+    <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
+    <script>
+        // Define Nepal geographic bounds
+        var nepalBounds = [
+            [26.347, 80.058],  // SouthWest corner
+            [30.422, 88.201]   // NorthEast corner
+        ];
 
-        // Calculate total rainfall for 72 hours, 48 hours, and 24 hours
-        const rainfall24 = results.find(data => data.label === '24 hours ago').totalRainfall;
-        const rainfall48 = results.find(data => data.label === '48 hours ago').totalRainfall;
-        const rainfall72 = results.find(data => data.label === '72 hours ago').totalRainfall;
+        // Initialize the map, centered on Nepal
+        var map = L.map('map', {
+            maxBounds: nepalBounds,
+            maxBoundsViscosity: 1.0,
+            minZoom: 6,
+            maxZoom: 12
+        }).setView([28.3949, 84.1240], 7);
 
-        // Define Risk Levels Based on Rainfall and Slope
-        let riskLevel;
+        // Tile layer
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 18
+        }).addTo(map);
 
-        if (rainfall24 === 0 && rainfall48 === 0 && rainfall72 === 0) {
-            // No rainfall, low risk regardless of slope
-            riskLevel = 'Low Risk';
-        } else if (rainfall24 > 0 && rainfall24 < 30) {
-            // Moderate rainfall
-            if (slope >= 30) {
-                riskLevel = 'Moderate Risk';  // High slope + moderate rainfall = moderate risk
-            } else if (slope >= 15 && slope < 30) {
-                riskLevel = 'Moderate Risk';  // Moderate slope + moderate rainfall = moderate risk
-            } else {
-                riskLevel = 'Low Risk';  // Low slope + moderate rainfall = low risk
+        // Variables for markers
+        var currentMarker = null;
+
+        // Function to fetch hourly weather data
+        function fetchHourlyWeatherData(lat, lon, startTime, endTime) {
+            const apiKey = '116c0097ae779c21dec380697159e539';  // Replace with your OpenWeatherMap API key
+            let currentTime = startTime;
+            let totalRainfall = 0;
+            const fetchPromises = [];
+
+            while (currentTime <= endTime) {
+                const weatherUrl = `https://api.openweathermap.org/data/2.5/onecall/timemachine?lat=${lat}&lon=${lon}&dt=${currentTime}&appid=${apiKey}&units=metric`;
+                fetchPromises.push(
+                    fetch(weatherUrl)
+                        .then(response => response.json())
+                        .then(data => {
+                            console.log(`Data for ${new Date(currentTime * 1000).toLocaleString()}:`, data);  // Debugging
+                            if (data.rain) {
+                                totalRainfall += data.rain['1h'] || 0;
+                            }
+                        })
+                        .catch(error => {
+                            console.error('Error fetching weather data:', error);
+                        })
+                );
+
+                // Move to the next hour
+                currentTime += 3600; // 3600 seconds = 1 hour
             }
-        } else if (rainfall24 >= 30) {
-            // Significant rainfall in 24 hours
-            if (slope >= 30) {
-                riskLevel = 'High Risk';  // High slope + high rainfall = high risk
-            } else if (slope >= 15 && slope < 30) {
-                riskLevel = 'Moderate Risk';  // Moderate slope + high rainfall = moderate risk
-            } else {
-                riskLevel = 'Moderate Risk';  // Low slope + high rainfall = moderate risk
-            }
-        } else {
-            // Edge case: very high slope and significant rainfall over 48/72 hours
-            if (rainfall72 >= 50 || rainfall48 >= 50) {
-                riskLevel = 'High Risk';  // Large amount of rainfall + slope = high risk
-            } else {
-                riskLevel = 'Moderate Risk';
-            }
+
+            return Promise.all(fetchPromises).then(() => totalRainfall);
         }
 
-        document.getElementById('risk-level').innerHTML = `Landslide Risk: ${riskLevel}`;
-    });
-}
+        // Function to fetch elevation data
+        function fetchElevation(lat, lon) {
+            const elevationUrl = `https://api.open-elevation.com/api/v1/lookup?locations=${lat},${lon}`;
+            return fetch(elevationUrl)
+                .then(response => response.json())
+                .then(data => data.results[0].elevation)
+                .catch(error => {
+                    console.error('Error fetching elevation data:', error);
+                    return 'Unavailable';
+                });
+        }
+
+        // Function to fetch slope data by comparing elevation at nearby points
+        function fetchSlope(lat, lon) {
+            const delta = 0.01; // Small change in latitude and longitude for slope calculation
+            const nearbyLat = lat + delta;
+            const nearbyLon = lon + delta;
+
+            return Promise.all([
+                fetchElevation(lat, lon),
+                fetchElevation(nearbyLat, nearbyLon)
+            ]).then(([elevation1, elevation2]) => {
+                const rise = Math.abs(elevation2 - elevation1); // Change in elevation (rise)
+                const run = Math.sqrt(Math.pow(delta * 111.32, 2)); // Approx distance between points (run), 1 degree ~111.32 km
+                const slope = (rise / run) * 100; // Slope as a percentage
+                return { elevation: elevation1, slope: slope.toFixed(2) };
+            });
+        }
+
+        // Calculate UNIX timestamps for past weather (72, 48, 24 hours)
+        function getTimestamps() {
+            const currentTime = Math.floor(Date.now() / 1000); // Current time in seconds
+            const secondsInHour = 3600;
+            return {
+                '72 hours ago': {
+                    start: currentTime - 72 * secondsInHour,
+                    end: currentTime - 1 * secondsInHour // Exclude current hour
+                },
+                '48 hours ago': {
+                    start: currentTime - 48 * secondsInHour,
+                    end: currentTime - 1 * secondsInHour // Exclude current hour
+                },
+                '24 hours ago': {
+                    start: currentTime - 24 * secondsInHour,
+                    end: currentTime - 1 * secondsInHour // Exclude current hour
+                }
+            };
+        }
+
+        // Function to fetch and display detailed weather, slope, and landslide risk data
+        function fetchDetails(lat, lon) {
+            const timestamps = getTimestamps();
+            const weatherPromises = Object.entries(timestamps).map(([label, { start, end }]) =>
+                fetchHourlyWeatherData(lat, lon, start, end)
+                    .then(totalRainfall => ({ label, totalRainfall }))
+            );
+
+            // Fetch slope data
+            const slopePromise = fetchSlope(lat, lon);
+
+            Promise.all([...weatherPromises, slopePromise]).then(results => {
+                // Weather data
+                const weatherData = results.slice(0, -1).map(data => `
+                    <strong>${data.label}</strong><br>
+                    Cumulative Rainfall: ${data.totalRainfall.toFixed(2)} mm<br><br>
+                `).join('');
+                document.getElementById('weather-data').innerHTML = weatherData;
+
+                // Elevation and slope data
+                const { elevation, slope } = results[results.length - 1];
+                document.getElementById('elevation-data').innerHTML = `
+                    Elevation: ${elevation} meters<br>
+                    Slope: ${slope}%
+                `;
+
+                // Landslide risk calculation (based on rainfall and slope)
+                const rainfall24 = results.find(data => data.label === '24 hours ago').totalRainfall;
+                let riskLevel;
+                if (rainfall24 === 0 && slope < 15) {
+                    riskLevel = 'Low Risk';
+                } else if ((rainfall24 > 0 && rainfall24 < 30) || (slope >= 15 && slope < 30)) {
+                    riskLevel = 'Moderate Risk';
+                } else {
+                    riskLevel = 'High Risk';
+                }
+                document.getElementById('risk-level').innerHTML = `Landslide Risk: ${riskLevel}`;
+            });
+        }
+
+        // Handle click events on the map
+        map.on('click', function(e) {
+            // Remove previous marker if it exists
+            if (currentMarker) {
+                map.removeLayer(currentMarker);
+            }
+
+            // Add new marker
+            const lat = e.latlng.lat;
+            const lon = e.latlng.lng;
+            currentMarker = L.marker([lat, lon]).addTo(map);
+
+            // Fetch and display details
+            fetchDetails(lat, lon);
+        });
+    </script>
+</body>
+</html>
