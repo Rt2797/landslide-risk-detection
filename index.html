@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Landslide Risk Detection - Nepal</title>
+    <title>Highway Landslide Risk Detection</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" />
     <style>
         body {
@@ -15,7 +15,7 @@
             color: #2e6da4;
         }
         #map {
-            height: 400px;
+            height: 500px;
             width: 100%;
             margin-top: 20px;
             border: 2px solid #2e6da4;
@@ -46,183 +46,76 @@
     </style>
 </head>
 <body>
-    <h1>Landslide Risk Detection in Nepal</h1>
-    <p>Select a point on the map to get detailed weather, slope, and risk information.</p>
+    <h1>Highway Landslide Risk Detection</h1>
+    <p>Select a point on the highway to get weather, slope, and risk information.</p>
 
     <div id="map"></div>
 
     <div id="info-container">
         <div class="info-section">
             <h2>Weather Information</h2>
-            <p id="weather-data">Click on the map to load weather data...</p>
+            <p id="weather-data">Click on a highway point to load weather data...</p>
         </div>
         <div class="info-section">
             <h2>Elevation & Slope</h2>
-            <p id="elevation-data">Click on the map to load elevation and slope...</p>
+            <p id="elevation-data">Click on a highway point to load elevation and slope...</p>
         </div>
         <div class="info-section">
             <h2>Landslide Risk</h2>
-            <p id="risk-level">Click on the map to calculate risk...</p>
+            <p id="risk-level">Click on a highway point to calculate risk...</p>
         </div>
     </div>
 
     <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
-    <script>
-        // Define Nepal geographic bounds
-        var nepalBounds = [
-            [26.347, 80.058],  // SouthWest corner
-            [30.422, 88.201]   // NorthEast corner
-        ];
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet-osm/1.0.0/leaflet-osm.min.js"></script>
 
-        // Initialize the map, centered on Nepal
-        var map = L.map('map', {
-            maxBounds: nepalBounds,
-            maxBoundsViscosity: 1.0,
-            minZoom: 6,
-            maxZoom: 12
-        }).setView([28.3949, 84.1240], 7);
+    <script>
+        // Center map on Nepal
+        var map = L.map('map').setView([28.5, 84.0], 8);
 
         // Tile layer
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             maxZoom: 18
         }).addTo(map);
 
-        // Variables for markers
-        var currentMarker = null;
-
-        // Function to fetch hourly weather data
-        function fetchHourlyWeatherData(lat, lon, startTime, endTime) {
-            const apiKey = '116c0097ae779c21dec380697159e539';  // Replace with your OpenWeatherMap API key
-            let currentTime = startTime;
-            let totalRainfall = 0;
-            const fetchPromises = [];
-
-            while (currentTime <= endTime) {
-                const weatherUrl = `https://api.openweathermap.org/data/2.5/onecall/timemachine?lat=${lat}&lon=${lon}&dt=${currentTime}&appid=${apiKey}&units=metric`;
-                fetchPromises.push(
-                    fetch(weatherUrl)
-                        .then(response => response.json())
-                        .then(data => {
-                            console.log(`Data for ${new Date(currentTime * 1000).toLocaleString()}:`, data);  // Debugging
-                            if (data.rain) {
-                                totalRainfall += data.rain['1h'] || 0;
-                            }
-                        })
-                        .catch(error => {
-                            console.error('Error fetching weather data:', error);
-                        })
-                );
-
-                // Move to the next hour
-                currentTime += 3600; // 3600 seconds = 1 hour
-            }
-
-            return Promise.all(fetchPromises).then(() => totalRainfall);
-        }
-
-        // Function to fetch elevation data
-        function fetchElevation(lat, lon) {
-            const elevationUrl = `https://api.open-elevation.com/api/v1/lookup?locations=${lat},${lon}`;
-            return fetch(elevationUrl)
-                .then(response => response.json())
-                .then(data => data.results[0].elevation)
-                .catch(error => {
-                    console.error('Error fetching elevation data:', error);
-                    return 'Unavailable';
-                });
-        }
-
-        // Function to fetch slope data by comparing elevation at nearby points
-        function fetchSlope(lat, lon) {
-            const delta = 0.01; // Small change in latitude and longitude for slope calculation
-            const nearbyLat = lat + delta;
-            const nearbyLon = lon + delta;
-
-            return Promise.all([
-                fetchElevation(lat, lon),
-                fetchElevation(nearbyLat, nearbyLon)
-            ]).then(([elevation1, elevation2]) => {
-                const rise = Math.abs(elevation2 - elevation1); // Change in elevation (rise)
-                const run = Math.sqrt(Math.pow(delta * 111.32, 2)); // Approx distance between points (run), 1 degree ~111.32 km
-                const slope = (rise / run) * 100; // Slope as a percentage
-                return { elevation: elevation1, slope: slope.toFixed(2) };
-            });
-        }
-
-        // Calculate UNIX timestamps for past weather (72, 48, 24 hours)
-        function getTimestamps() {
-            const currentTime = Math.floor(Date.now() / 1000); // Current time in seconds
-            const secondsInHour = 3600;
-            return {
-                '72 hours ago': {
-                    start: currentTime - 72 * secondsInHour,
-                    end: currentTime - 1 * secondsInHour // Exclude current hour
-                },
-                '48 hours ago': {
-                    start: currentTime - 48 * secondsInHour,
-                    end: currentTime - 1 * secondsInHour // Exclude current hour
-                },
-                '24 hours ago': {
-                    start: currentTime - 24 * secondsInHour,
-                    end: currentTime - 1 * secondsInHour // Exclude current hour
+        // Function to fetch OSM highway data
+        function loadHighways() {
+            const highwayLayer = L.osmLayer({
+                url: "https://overpass-api.de/api/interpreter?data=[out:json];way[highway](28.0,80.0,30.0,88.0);out;",
+                style: {
+                    color: '#FF0000',  // Highway line color
+                    weight: 2
                 }
-            };
+            });
+
+            highwayLayer.addTo(map);
         }
 
-        // Function to fetch and display detailed weather, slope, and landslide risk data
-        function fetchDetails(lat, lon) {
-            const timestamps = getTimestamps();
-            const weatherPromises = Object.entries(timestamps).map(([label, { start, end }]) =>
-                fetchHourlyWeatherData(lat, lon, start, end)
-                    .then(totalRainfall => ({ label, totalRainfall }))
-            );
+        // Function to fetch weather, slope, and risk data
+        function fetchDetails(lat, lon, name) {
+            document.getElementById('weather-data').innerHTML = `Loading data for ${name}...`;
 
-            // Fetch slope data
-            const slopePromise = fetchSlope(lat, lon);
+            setTimeout(() => {
+                const randomRainfall = (Math.random() * 100).toFixed(2);
+                const randomSlope = (Math.random() * 50).toFixed(2);
+                const riskLevel = randomRainfall > 50 || randomSlope > 30 ? 'High Risk' : 'Low Risk';
 
-            Promise.all([...weatherPromises, slopePromise]).then(results => {
-                // Weather data
-                const weatherData = results.slice(0, -1).map(data => `
-                    <strong>${data.label}</strong><br>
-                    Cumulative Rainfall: ${data.totalRainfall.toFixed(2)} mm<br><br>
-                `).join('');
-                document.getElementById('weather-data').innerHTML = weatherData;
-
-                // Elevation and slope data
-                const { elevation, slope } = results[results.length - 1];
-                document.getElementById('elevation-data').innerHTML = `
-                    Elevation: ${elevation} meters<br>
-                    Slope: ${slope}%
+                document.getElementById('weather-data').innerHTML = `
+                    Location: ${name}<br>
+                    Rainfall (last 24 hours): ${randomRainfall} mm
                 `;
-
-                // Landslide risk calculation (based on rainfall and slope)
-                const rainfall24 = results.find(data => data.label === '24 hours ago').totalRainfall;
-                let riskLevel;
-                if (rainfall24 === 0 && slope < 15) {
-                    riskLevel = 'Low Risk';
-                } else if ((rainfall24 > 0 && rainfall24 < 30) || (slope >= 15 && slope < 30)) {
-                    riskLevel = 'Moderate Risk';
-                } else {
-                    riskLevel = 'High Risk';
-                }
+                document.getElementById('elevation-data').innerHTML = `Slope: ${randomSlope}%`;
                 document.getElementById('risk-level').innerHTML = `Landslide Risk: ${riskLevel}`;
-            });
+            }, 1000);
         }
 
-        // Handle click events on the map
-        map.on('click', function(e) {
-            // Remove previous marker if it exists
-            if (currentMarker) {
-                map.removeLayer(currentMarker);
-            }
+        // Load OSM highways
+        loadHighways();
 
-            // Add new marker
-            const lat = e.latlng.lat;
-            const lon = e.latlng.lng;
-            currentMarker = L.marker([lat, lon]).addTo(map);
-
-            // Fetch and display details
-            fetchDetails(lat, lon);
+        // Sample marker (you can add more predefined markers for specific locations on the highway)
+        const sampleMarker = L.marker([28.2, 84.0]).addTo(map);
+        sampleMarker.bindPopup("Sample Point").on('click', function() {
+            fetchDetails(28.2, 84.0, "Sample Point");
         });
     </script>
 </body>
